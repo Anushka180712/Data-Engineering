@@ -1,0 +1,19 @@
+# docker compose run --rm pipeline                      -> full pipeline
+# docker compose run --rm pipeline search "oil prices"  -> semantic search
+# docker compose run --rm pipeline sql "SELECT * FROM catalog"
+services:
+  pipeline:
+    build:
+      context: .
+      args:
+        WITH_NEURAL: "true"     # set "false" for a tiny image using the offline LSA embedder
+    image: de-pipeline:latest
+    volumes:
+      - ./data:/app/data        # lakehouse, vector store and metadata persist on the host
+      - hf-cache:/root/.cache/huggingface
+    environment:
+      DE_EMBEDDING__BACKEND: auto
+      DE_VECTOR_STORE__BACKEND: chroma
+
+volumes:
+  hf-cache:

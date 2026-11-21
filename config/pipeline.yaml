@@ -1,0 +1,40 @@
+# Central pipeline config. Every path is relative to the project root unless absolute.
+# Any key can be overridden with an env var: DE_<SECTION>__<KEY>, e.g. DE_EMBEDDING__BACKEND=lsa
+
+paths:
+  data_dir: data            # landing zone (raw files) lives under here
+  lakehouse_dir: data/lakehouse   # Delta Lake tables: bronze / silver / gold
+  warehouse: data/warehouse.duckdb
+  vector_dir: data/vectorstore
+  artifacts_dir: data/artifacts   # fitted models (e.g. LSA), reports
+
+sources:
+  - name: bbc_news
+    type: http_csv          # http_csv | local_csv
+    uri: https://raw.githubusercontent.com/suraj-deshmukh/BBC-Dataset-News-Classification/master/dataset/dataset.csv
+    text_column: news
+    label_column: type
+    license_note: "BBC News dataset (D. Greene & P. Cunningham, ICML 2006), for non-commercial research use"
+
+cleaning:
+  min_body_chars: 200
+  allowed_categories: [business, entertainment, politics, sport, tech]
+
+chunking:
+  chunk_size_tokens: 180    # target tokens per chunk (whitespace-token estimate)
+  chunk_overlap_tokens: 40
+  min_chunk_tokens: 30      # tail chunks smaller than this get merged into the previous one
+  prepend_title: true       # contextual enrichment: embed "title + chunk"
+
+embedding:
+  backend: auto             # auto | sentence-transformers | lsa
+  model_name: sentence-transformers/all-MiniLM-L6-v2
+  lsa_dimensions: 256
+  batch_size: 64
+
+vector_store:
+  backend: chroma           # chroma | faiss
+  collection: bbc_news_chunks
+
+quality:
+  fail_on_error: true       # abort the run if an error-severity DQ check fails
