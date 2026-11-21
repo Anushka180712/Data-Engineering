@@ -24,16 +24,15 @@ class SourceConfig:
 
 @dataclass
 class Paths:
-    data_dir: Path
-    lakehouse_dir: Path
-    warehouse: Path
+    lake_uri: str         # data lake root: a local directory or s3://bucket/prefix
+    data_dir: Path        # local working dir (staging downloads)
+    warehouse: Path       # DuckDB file: catalog + operational metadata
     vector_dir: Path
     artifacts_dir: Path
 
-    def layer(self, name: str) -> Path:
-        p = self.data_dir / name
-        p.mkdir(parents=True, exist_ok=True)
-        return p
+    @property
+    def lake_is_remote(self) -> bool:
+        return "://" in self.lake_uri
 
 
 @dataclass
@@ -110,8 +109,13 @@ def load_config(path: str | Path | None = None, root: Path | None = None) -> Con
         pp = Path(p)
         return pp if pp.is_absolute() else root / pp
 
-    paths = Paths(**{k: resolve(v) for k, v in raw["paths"].items()})
-    for p in (paths.data_dir, paths.lakehouse_dir, paths.vector_dir, paths.artifacts_dir):
+    p_raw = dict(raw["paths"])
+    lake_uri = str(p_raw.pop("lake_uri")).rstrip("/")
+    if "://" not in lake_uri:
+        lake_uri = str(resolve(lake_uri))
+        Path(lake_uri).mkdir(parents=True, exist_ok=True)
+    paths = Paths(lake_uri=lake_uri, **{k: resolve(v) for k, v in p_raw.items()})
+    for p in (paths.data_dir, paths.vector_dir, paths.artifacts_dir):
         p.mkdir(parents=True, exist_ok=True)
 
     sources = []

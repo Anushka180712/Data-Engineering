@@ -1,6 +1,6 @@
-"""Stage 1 - Ingestion: land raw files immutably, then load them into the bronze Delta table.
+"""Stage 1 - Ingestion: land raw files immutably in the lake, then load them into bronze.
 
-* Landing zone: data/raw/<source>/<batch_id>/<file> (never modified after write)
+* Raw zone: <lake_uri>/raw/<source>/<batch_id>/<file> (local disk or S3; never modified)
 * Idempotent: a file whose sha256 is already in the ingestion manifest is skipped
 * Robust download: streaming, retries with exponential backoff, timeout
 * Bronze keeps the data *as received* (all strings) + lineage columns
@@ -18,7 +18,7 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-from .. import lakehouse
+from .. import lakehouse, storage
 from ..config import Config, SourceConfig
 from ..log import get_logger
 
@@ -62,7 +62,8 @@ def _sha256(path: Path) -> str:
 
 
 def fetch_source(cfg: Config, src: SourceConfig, batch_id: str) -> Path:
-    landing = cfg.paths.data_dir / "raw" / src.name / batch_id
+    """Download/copy the source into local staging; it is promoted to the raw zone once new."""
+    landing = cfg.paths.data_dir / "staging" / src.name / batch_id
     landing.mkdir(parents=True, exist_ok=True)
     dest = landing / (Path(src.uri).name or "data.csv")
     if src.type == "http_csv":
@@ -95,6 +96,8 @@ def run(cfg: Config, run_id: str) -> dict:
             metrics["sources"][src.name] = {"status": "skipped_unchanged", "sha256": sha}
             continue
 
+        raw_uri = storage.put_file(cfg, raw_path, "raw", src.name, batch_id, raw_path.name)
+        log.info("[%s] landed raw file -> %s", src.name, raw_uri)
         df = read_raw_csv(raw_path)
         bronze = pd.DataFrame({
             "raw_text": df[src.text_column],
@@ -110,9 +113,11 @@ def run(cfg: Config, run_id: str) -> dict:
             description="Raw articles exactly as received, one row per source record, with lineage columns")
         with lakehouse.metadata_db(cfg) as con:
             con.execute("INSERT INTO ingestion_manifest VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                        [src.name, src.uri, sha, raw_path.stat().st_size, len(df), str(raw_path),
+                        [src.name, src.uri, sha, raw_path.stat().st_size, len(df), raw_uri,
                          batch_id, datetime.now(timezone.utc)])
+        size = raw_path.stat().st_size
+        shutil.rmtree(raw_path.parent)  # staging is transient; the raw zone is the copy of record
         log.info("[%s] landed %d rows -> bronze.articles v%s", src.name, len(df), stats["version"])
         metrics["sources"][src.name] = {"status": "loaded", "rows": len(df), "sha256": sha,
-                                        "bytes": raw_path.stat().st_size, **stats}
+                                        "bytes": size, "raw_uri": raw_uri, **stats}
     return metrics

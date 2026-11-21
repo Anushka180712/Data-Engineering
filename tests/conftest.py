@@ -15,7 +15,7 @@ def cfg(tmp_path, monkeypatch):
     monkeypatch.delenv("DE_CONFIG", raising=False)
     shutil.copy(FIXTURES / "sample_news.csv", tmp_path / "sample_news.csv")
     raw = {
-        "paths": {"data_dir": "data", "lakehouse_dir": "data/lakehouse",
+        "paths": {"lake_uri": "data/lake", "data_dir": "data",
                   "warehouse": "data/warehouse.duckdb", "vector_dir": "data/vectorstore",
                   "artifacts_dir": "data/artifacts"},
         "sources": [{"name": "fixture", "type": "local_csv", "uri": "sample_news.csv",

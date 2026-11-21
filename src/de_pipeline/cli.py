@@ -52,6 +52,14 @@ def cmd_sql(cfg, args):
 
 
 def cmd_catalog(cfg, args):
+    if args.ddl:
+        ddl = lakehouse.metastore_ddl(cfg)
+        out = cfg.paths.artifacts_dir / "metastore_ddl.sql"
+        out.write_text(ddl)
+        print(ddl)
+        print(f"-- written to {out}", file=sys.stderr)
+        return
+    print(f"lake: {cfg.paths.lake_uri}\n")
     with lakehouse.metadata_db(cfg) as con:
         rows = con.execute("SELECT table_fqn, format, version, num_rows, description FROM catalog "
                            "ORDER BY CASE layer WHEN 'bronze' THEN 1 WHEN 'silver' THEN 2 ELSE 3 END, "
@@ -102,7 +110,10 @@ def main(argv: list[str] | None = None) -> int:
     q.add_argument("query")
     q.set_defaults(fn=cmd_sql)
 
-    sub.add_parser("catalog", help="list lakehouse tables").set_defaults(fn=cmd_catalog)
+    c = sub.add_parser("catalog", help="list lakehouse tables")
+    c.add_argument("--ddl", action="store_true",
+                   help="print Hive Metastore / Glue / Spark SQL DDL that registers the tables")
+    c.set_defaults(fn=cmd_catalog)
     h = sub.add_parser("history", help="Delta commit history of a table, e.g. silver.articles")
     h.add_argument("table")
     h.set_defaults(fn=cmd_history)

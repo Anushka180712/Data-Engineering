@@ -2,8 +2,11 @@
 # Any key can be overridden with an env var: DE_<SECTION>__<KEY>, e.g. DE_EMBEDDING__BACKEND=lsa
 
 paths:
-  data_dir: data            # landing zone (raw files) lives under here
-  lakehouse_dir: data/lakehouse   # Delta Lake tables: bronze / silver / gold
+  # Data lake root. Holds the raw zone + Delta tables: raw/ bronze/ silver/ gold/
+  #   local disk : data/lake
+  #   S3 / MinIO : s3://lakehouse   (credentials/endpoint from AWS_* env vars, see README)
+  lake_uri: data/lake
+  data_dir: data            # local working dir (download staging)
   warehouse: data/warehouse.duckdb
   vector_dir: data/vectorstore
   artifacts_dir: data/artifacts   # fitted models (e.g. LSA), reports
