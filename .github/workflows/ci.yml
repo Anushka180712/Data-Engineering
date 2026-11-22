@@ -13,3 +13,22 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: pip install -e ".[dev]"
       - run: pytest -q
+
+  docker-s3:
+    # Full pipeline in Docker with the lake on the S3-compatible store from docker-compose.yml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build pipeline image (offline embeddings to keep CI fast)
+        run: docker compose build --build-arg WITH_NEURAL=false pipeline
+      - name: Run pipeline against S3
+        run: docker compose run --rm pipeline
+      - name: Search, catalog and Hive DDL against the S3 lake
+        run: |
+          docker compose run --rm pipeline search "election campaign" -k 3
+          docker compose run --rm pipeline catalog
+          docker compose run --rm pipeline catalog --ddl | grep "LOCATION 's3a://lakehouse/silver/articles'"
+      - name: Re-run is idempotent
+        run: docker compose run --rm pipeline run 2>&1 | grep "skipping load"
+      - if: always()
+        run: docker compose down -v

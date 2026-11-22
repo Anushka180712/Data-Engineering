@@ -8,8 +8,19 @@ from typing import Any
 
 import yaml
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CONFIG = PROJECT_ROOT / "config" / "pipeline.yaml"
+SOURCE_ROOT = Path(__file__).resolve().parents[2]   # repo root when installed editable
+
+
+def default_config_path() -> Path:
+    """$DE_CONFIG, else ./config/pipeline.yaml, else the repo's config (editable installs)."""
+    if os.environ.get("DE_CONFIG"):
+        return Path(os.environ["DE_CONFIG"])
+    for candidate in (Path.cwd() / "config" / "pipeline.yaml",
+                      SOURCE_ROOT / "config" / "pipeline.yaml"):
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError("config/pipeline.yaml not found: run from the project root "
+                            "or set DE_CONFIG=/path/to/pipeline.yaml")
 
 
 @dataclass
@@ -101,8 +112,9 @@ def _apply_env_overrides(raw: dict) -> dict:
 
 
 def load_config(path: str | Path | None = None, root: Path | None = None) -> Config:
-    path = Path(path or os.environ.get("DE_CONFIG", DEFAULT_CONFIG))
-    root = root or PROJECT_ROOT
+    path = Path(path) if path else default_config_path()
+    # relative paths in the config resolve against the project root (the dir holding config/)
+    root = root or path.resolve().parent.parent
     raw = _apply_env_overrides(yaml.safe_load(path.read_text()))
 
     def resolve(p: str) -> Path:

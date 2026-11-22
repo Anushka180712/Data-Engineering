@@ -27,12 +27,12 @@ docker:
 clean:            ## wipe all generated data
 	rm -rf data/
 
-lake-up:          ## start MinIO (S3) and create the lake bucket
-	docker compose up -d minio minio-init
+lake-up:          ## start the S3-compatible object store (SeaweedFS) on localhost:8333
+	docker compose up -d --wait s3
 
-run-s3:           ## full pipeline with the lake on MinIO (needs lake-up)
-	DE_PATHS__LAKE_URI=s3://lakehouse AWS_ENDPOINT_URL=http://localhost:9000 \
-	AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin AWS_REGION=us-east-1 \
+run-s3:           ## full pipeline with the lake on S3 (needs lake-up)
+	DE_PATHS__LAKE_URI=s3://lakehouse AWS_ENDPOINT_URL=http://localhost:8333 \
+	AWS_ACCESS_KEY_ID=lakeadmin AWS_SECRET_ACCESS_KEY=lakeadmin-secret AWS_REGION=us-east-1 \
 	de-pipeline run
 
 ddl:              ## Hive Metastore / Glue DDL for all lake tables

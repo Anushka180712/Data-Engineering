@@ -1,6 +1,6 @@
 """Run the full pipeline against S3-compatible object storage (in-process moto S3 server).
 
-Proves the lake is storage-agnostic: identical code on local disk and on s3:// (AWS S3 / MinIO).
+Proves the lake is storage-agnostic: identical code on local disk and on s3:// (AWS S3, SeaweedFS, MinIO).
 """
 import pytest
 

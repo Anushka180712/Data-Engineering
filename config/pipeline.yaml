@@ -4,7 +4,7 @@
 paths:
   # Data lake root. Holds the raw zone + Delta tables: raw/ bronze/ silver/ gold/
   #   local disk : data/lake
-  #   S3 / MinIO : s3://lakehouse   (credentials/endpoint from AWS_* env vars, see README)
+  #   S3         : s3://lakehouse   (credentials/endpoint from AWS_* env vars, see README)
   lake_uri: data/lake
   data_dir: data            # local working dir (download staging)
   warehouse: data/warehouse.duckdb

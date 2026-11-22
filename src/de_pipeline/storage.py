@@ -1,12 +1,12 @@
 """Storage abstraction for the data lake: local filesystem or S3-compatible object storage.
 
 The same code writes to `data/lake/...` on a laptop and to `s3://bucket/...` on AWS S3 or
-MinIO; only `paths.lake_uri` changes. This is the property that made HDFS -> S3 migrations
+MinIO/SeaweedFS; only `paths.lake_uri` changes. This is the property that made HDFS -> S3 migrations
 possible: compute talks to a filesystem *interface*, not to disks.
 
 S3 settings come from the standard AWS environment variables:
   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION (default us-east-1)
-  AWS_ENDPOINT_URL   - set for MinIO / other S3-compatible stores, e.g. http://minio:9000
+  AWS_ENDPOINT_URL   - set for S3-compatible stores (SeaweedFS, MinIO, Ceph), e.g. http://s3:8333
 """
 from __future__ import annotations
 
@@ -53,6 +53,7 @@ def filesystem(cfg: Config) -> tuple[pafs.FileSystem, str]:
         session_token=os.environ.get("AWS_SESSION_TOKEN"),
         region=os.environ.get("AWS_REGION", "us-east-1"),
         endpoint_override=_endpoint(),
+        allow_bucket_creation=True,   # lets ensure_lake() create the bucket on first run
     )
     return fs, uri.removeprefix("s3://")
 
@@ -61,8 +62,16 @@ def lake_uri(cfg: Config, *parts: str) -> str:
     return "/".join([cfg.paths.lake_uri, *parts])
 
 
+def ensure_lake(cfg: Config) -> None:
+    """Create the lake root (local directory, or the S3 bucket) if it doesn't exist yet."""
+    fs, base = filesystem(cfg)
+    if fs.get_file_info(base).type == pafs.FileType.NotFound:
+        fs.create_dir(base, recursive=True)
+
+
 def put_file(cfg: Config, local: Path, *parts: str) -> str:
     """Copy a local file into the lake (raw zone). Returns its full lake URI."""
+    ensure_lake(cfg)
     fs, base = filesystem(cfg)
     dest = "/".join([base, *parts])
     fs.create_dir(dest.rsplit("/", 1)[0], recursive=True)

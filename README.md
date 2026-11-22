@@ -15,7 +15,7 @@ de-pipeline run                    # ingest -> clean -> chunk -> embed -> index 
 de-pipeline search "rising oil prices hurt airline profits"
 ```
 
-Want the lake on S3? `make lake-up && make run-s3` puts the same lake on MinIO, an S3-compatible
+Want the lake on S3? `make lake-up && make run-s3` puts the same lake on SeaweedFS, an S3-compatible
 object store running in Docker.
 
 ---
@@ -28,7 +28,7 @@ flowchart LR
         A["BBC News CSV<br/>(HTTP)"]
     end
 
-    subgraph LAKE["Data lake: local disk or S3 / MinIO  (lake_uri)"]
+    subgraph LAKE["Data lake: local disk or S3-compatible storage  (lake_uri)"]
         direction LR
         RAW[/"raw/ zone<br/>immutable source files<br/>sha256 fingerprinted"/]
         subgraph LH["Lakehouse: Delta Lake tables (Parquet + transaction log)"]
@@ -90,7 +90,7 @@ A lake is built from a few layers:
 
 | Layer | Question it answers | Options | In this project |
 |---|---|---|---|
-| **Storage** | Where do the bytes live? | HDFS, AWS S3, Azure ADLS, Google GCS, MinIO | **Local disk or S3 / MinIO** (one setting: `lake_uri`) |
+| **Storage** | Where do the bytes live? | HDFS, AWS S3, Azure ADLS, Google GCS, MinIO, SeaweedFS | **Local disk or S3** (AWS S3, or SeaweedFS in Docker; one setting: `lake_uri`) |
 | **File format** | How is one file laid out? | CSV, JSON, Avro, ORC, **Parquet** | Raw CSV in `raw/`, **Parquet** for every table |
 | **Table format** | How do many files act as one table, with safe updates? | Plain Hive-style folders, **Delta Lake**, Apache Iceberg, Apache Hudi | **Delta Lake** |
 | **Catalog / metastore** | Which tables exist, where are they, what is their schema? | **Hive Metastore**, AWS Glue, Unity Catalog, Nessie | DuckDB `catalog` table, with **Hive / Glue DDL export** |
@@ -162,16 +162,22 @@ enforcement, `MERGE` upserts and **time travel**. It's written here with
 same tables can be read by Spark, Databricks, Trino, Athena or DuckDB. Iceberg would work equally
 well; Delta was chosen because delta-rs makes it fully usable from plain Python.
 
-### Running the lake on S3 (MinIO)
+### Running the lake on S3 (SeaweedFS in Docker)
 
 ```bash
-make lake-up       # docker compose: MinIO + create bucket "lakehouse"
-make run-s3        # same pipeline, lake_uri = s3://lakehouse
+make lake-up       # docker compose: start the S3-compatible store on localhost:8333
+make run-s3        # same pipeline, lake_uri = s3://lakehouse (bucket created on first run)
 # or run everything in containers:
 docker compose run --rm pipeline
 ```
-Open the MinIO console at http://localhost:9001 (login `minioadmin` / `minioadmin`) to browse
-`raw/`, `bronze/`, `silver/` and `gold/`, including each table's `_delta_log/`.
+Open the filer UI at http://localhost:8888/buckets/lakehouse/ to browse `raw/`, `bronze/`,
+`silver/` and `gold/`, including each table's `_delta_log/`. The S3 credentials are in
+[`config/seaweedfs_s3.json`](config/seaweedfs_s3.json) (`lakeadmin` / `lakeadmin-secret`).
+
+The local object store is [SeaweedFS](https://github.com/seaweedfs/seaweedfs) (Apache-2.0). MinIO
+was the usual choice, but its Docker images are no longer published on Docker Hub. The pipeline
+only speaks the S3 API, so MinIO, Ceph or any other S3-compatible store works by changing
+`AWS_ENDPOINT_URL` and the credentials.
 
 For **AWS S3**, set `lake_uri: s3://your-bucket/lakehouse` and the usual `AWS_ACCESS_KEY_ID`,
 `AWS_SECRET_ACCESS_KEY` and `AWS_REGION`, and leave `AWS_ENDPOINT_URL` unset. The S3 path is
@@ -339,9 +345,9 @@ make eval
 make test
 ```
 
-**Docker (lake on MinIO / S3)**
+**Docker (lake on S3 via SeaweedFS)**
 ```bash
-docker compose run --rm pipeline                         # starts MinIO, creates the bucket, runs the pipeline
+docker compose run --rm pipeline                         # starts the S3 store, creates the bucket, runs the pipeline
 docker compose run --rm pipeline search "election campaign"
 docker compose run --rm pipeline sql "SELECT * FROM catalog"
 docker compose run --rm pipeline catalog --ddl           # Hive Metastore / Glue DDL
@@ -370,7 +376,7 @@ the form `DE_<SECTION>__<KEY>`. To add a source, append it under `sources:` (`ht
 ├── src/de_pipeline/
 │   ├── cli.py                    # de-pipeline run | search | eval | sql | catalog | history | runs
 │   ├── pipeline.py               # DAG runner, run metadata
-│   ├── storage.py                # lake storage: local filesystem or S3 / MinIO
+│   ├── storage.py                # lake storage: local filesystem or S3
 │   ├── lakehouse.py              # Delta tables, catalog, Hive DDL export, DuckDB SQL, metadata
 │   ├── quality.py                # data-quality checks
 │   ├── embedders.py              # sentence-transformers / LSA
@@ -379,7 +385,7 @@ the form `DE_<SECTION>__<KEY>`. To add a source, append it under `sources:` (`ht
 │   └── stages/                   # ingest, clean, chunk, embed, index
 ├── orchestration/airflow_dag.py  # same stages as an Airflow DAG
 ├── tests/                        # unit + end-to-end tests (fixture data, runs offline)
-├── Dockerfile, docker-compose.yml (pipeline + MinIO), Makefile
+├── Dockerfile, docker-compose.yml (pipeline + S3 store), Makefile
 └── .github/workflows/ci.yml      # pytest on every push
 ```
 
